@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Worm Chase – v7.1</title>
+  <style>
+    :root {
+      --bg-fallback: #050509;
+      --obstacle: #353b5b;
+      --obstacle-border: #7077a8;
+      --accent: #ffcc66;
+
+      --map-image: url("https://iili.io/fBu6EZJ.png");
+      --player-image: url("https://iili.io/fBu41ql.png");
+      --worm-image: url("https://iili.io/fBu4QBR.png");
+
+      /* >>> REPLACE WITH YOUR REWARD PNG URL <<< */
+      --victory-image: url("https://iili.io/fBRMm3x.png");
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      cursor: none;
+      font-family: system-ui, sans-serif;
+      background-color: var(--bg-fallback);
+      background-image: var(--map-image);
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+
+    .hint {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      color: #f0f0f0;
+      font-size: 14px;
+      opacity: 0.8;
+      pointer-events: none;
+      text-align: center;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    }
+
+    /* === HUD === */
+    #timer {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 14px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 999px;
+      color: #f8f8f8;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      z-index: 10;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    }
+
+    #treasure-counter {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 12px;
+      color: #ffe8a3;
+      font-size: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      z-index: 10;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    }
+
+    /* === PLAYER === */
+    #player {
+      position: fixed;
+      width: 128px;
+      height: 128px;
+      background-image: var(--player-image);
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      left: -999px;
+      top: -999px;
+      z-index: 3;
+      transition: opacity 0.15s ease, box-shadow 0.15s ease;
+      opacity: 1;
+    }
+
+    #player.player--powered {
+      box-shadow:
+        0 0 10px rgba(200, 160, 255, 0.9),
+        0 0 24px rgba(150, 90, 255, 0.9);
+      border-radius: 50%;
+    }
+
+    /* === OBSTACLES === */
+    #obstacles {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .obstacle {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 20%, #6369af, var(--obstacle));
+      border: 2px solid var(--obstacle-border);
+      box-shadow:
+        0 0 12px rgba(120, 132, 255, 0.5),
+        inset 0 0 8px rgba(0, 0, 0, 0.6);
+      opacity: 0.9;
+    }
+
+    /* === HAZARDS === */
+    #hazards {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .hazard {
+      position: absolute;
+      border-radius: 50%;
+      border: 2px solid #4df18a;
+      background: radial-gradient(circle at 30% 20%, rgba(180,255,210,0.9), rgba(0,80,20,0.85));
+      box-shadow:
+        0 0 14px rgba(77, 241, 138, 0.7),
+        0 0 30px rgba(0, 0, 0, 0.7);
+      opacity: 0.9;
+      animation: hazard-pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes hazard-pulse {
+      0%, 100% { filter: brightness(1); }
+      50%      { filter: brightness(1.25); }
+    }
+
+    /* === TREASURE === */
+    #tokens {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .token {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 20%, #fff7c1, #f8c632);
+      box-shadow:
+        0 0 8px rgba(255, 223, 120, 0.9),
+        0 0 16px rgba(0, 0, 0, 0.6);
+      border: 2px solid #b97b1c;
+      transform: translate(-50%, -50%);
+      animation: token-glow 1.6s ease-in-out infinite;
+    }
+
+    @keyframes token-glow {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50%      { transform: translate(-50%, -50%) scale(1.12); }
+    }
+
+    /* === POWERUPS === */
+    #powerups {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .powerup {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 20%, #f9e6ff, #a540ff);
+      box-shadow:
+        0 0 10px rgba(210, 160, 255, 0.9),
+        0 0 20px rgba(0,0,0,0.8);
+      border: 2px solid #6b18b0;
+      transform: translate(-50%, -50%);
+      animation: powerup-pulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes powerup-pulse {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50%      { transform: translate(-50%, -50%) scale(1.15); }
+    }
+
+    /* === WORM === */
+    .cat {
+      position: absolute;
+      width: 200px;
+      height: 140px;
+      transform-origin: 50% 50%;
+      pointer-events: none;
+      filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.7));
+      z-index: 2;
+    }
+
+    .cat-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .worm-sprite {
+      width: 180px;
+      height: 180px;
+      background-image: var(--worm-image);
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      transform-origin: 50% 60%;
+    }
+
+    .cat--idle .worm-sprite {
+      animation: worm-idle 1.6s ease-in-out infinite;
+    }
+
+    .cat--walk .worm-sprite,
+    .cat--run .worm-sprite,
+    .cat--pounce .worm-sprite {
+      animation: worm-move 0.35s ease-in-out infinite;
+    }
+
+    @keyframes worm-idle {
+      0%, 100% { transform: scale(1); }
+      50%      { transform: scale(1.02, 0.98); }
+    }
+
+    @keyframes worm-move {
+      0%   { transform: scale(1, 1); }
+      25%  { transform: scale(1.08, 0.92); }
+      50%  { transform: scale(0.95, 1.05); }
+      75%  { transform: scale(1.08, 0.92); }
+      100% { transform: scale(1, 1); }
+    }
+
+    /* === REWARD BANNER (top, fades out) === */
+    #victory {
+      position: fixed;
+      width: 660px;
+      height: 660px;
+      left: 50%;
+      top: 40px;
+      transform: translate(-50%, 0) scale(0.7);
+      background-image: var(--victory-image);
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: top center;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 15;
+    }
+
+    #victory.victory--visible {
+      animation: victory-banner 4s ease-out forwards;
+    }
+
+    @keyframes victory-banner {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, -10px) scale(0.7);
+        filter: drop-shadow(0 0 0 rgba(255, 220, 120, 0));
+      }
+      15% {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(0.9);
+        filter:
+          drop-shadow(0 0 10px rgba(255, 240, 170, 1))
+          drop-shadow(0 0 26px rgba(255, 210, 90, 0.9));
+      }
+      60% {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(0.9);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -20px) scale(0.9);
+        filter:
+          drop-shadow(0 0 0 rgba(255, 220, 120, 0))
+          drop-shadow(0 0 0 rgba(0,0,0,0));
+      }
+    }
+
+    /* === GAME OVER === */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      color: #f5f5f5;
+      text-align: center;
+      z-index: 20;
+      opacity: 1;
+      transition: opacity 0.25s ease;
+    }
+
+    .overlay--hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .overlay-title {
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+
+    .overlay-subtitle {
+      font-size: 16px;
+      margin-bottom: 24px;
+      color: #cccccc;
+    }
+
+    .overlay button {
+      padding: 10px 22px;
+      border-radius: 999px;
+      border: none;
+      font-size: 15px;
+      cursor: pointer;
+      background: var(--accent);
+      color: #222;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .overlay button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="obstacles"></div>
+  <div id="hazards"></div>
+  <div id="tokens"></div>
+  <div id="powerups"></div>
+
+  <div id="player"></div>
+
+  <div class="cat cat--idle" id="cat">
+    <div class="cat-inner">
+      <div class="worm-sprite"></div>
+    </div>
+  </div>
+
+  <div id="timer">Time: 0.0 s</div>
+  <div id="treasure-counter">Treasure: 0</div>
+
+  <!-- Reward banner -->
+  <div id="victory"></div>
+
+  <div class="hint">
+    Move your mouse around to dodge the worm, hazards, and obstacles 🪱<br/>
+    Collect gold to enrage the boss • Rare purple orbs cleanse one hazard<br/>
+    Pick up 30 treasures to trigger a special reward ✨<br/>
+    (Click or press a key to enable sound • Press Enter to restart)
+  </div>
+
+  <div class="overlay overlay--hidden" id="overlay">
+    <div class="overlay-title">You wiped</div>
+    <div class="overlay-subtitle">
+      The worm caught you or the poison got you. 💀<br/>
+      Press Enter or click to try again.
+    </div>
+    <button id="reset-btn">Play again</button>
+  </div>
+
+  <script>
+    const cat = document.getElementById("cat");
+    const overlay = document.getElementById("overlay");
+    const resetBtn = document.getElementById("reset-btn");
+    const obstaclesContainer = document.getElementById("obstacles");
+    const hazardsContainer = document.getElementById("hazards");
+    const tokensContainer = document.getElementById("tokens");
+    const powerupsContainer = document.getElementById("powerups");
+    const player = document.getElementById("player");
+    const timerEl = document.getElementById("timer");
+    const treasureCounterEl = document.getElementById("treasure-counter");
+    const victoryEl = document.getElementById("victory");
+
+    let catX;
+    let catY;
+
+    let targetX;
+    let targetY;
+
+    let playerX = null;
+    let playerY = null;
+    const PLAYER_RADIUS = 40;
+
+    let lastMouseMoveTime = performance.now();
+    let gameOver = false;
+    let animationId = null;
+
+    let obstacles = [];
+    let hazards = [];
+    let tokens = [];   // at most 1
+    let powerups = [];
+    let tokensCollected = 0;
+    let hasPowerup = false;
+
+    let gameStartTime = 0;
+    let lastHazardTime = 0;
+    const HAZARD_INTERVAL = 6000;
+    const HAZARD_START_DELAY = 4000;
+
+    let lastPowerupTime = 0;
+    const POWERUP_MIN_INTERVAL = 15000;
+
+    // Reward condition
+    const VICTORY_TREASURE_THRESHOLD = 30;
+    let victoryShown = false;
+
+    // >>> REPLACE WITH YOUR REWARD MP3 URL <<<
+    const VICTORY_SOUND_URL = "https://audio.jukehost.co.uk/HlPVmS8DYaKPMqqHAIlA6SGHgqenxcbg";
+
+    /* === AMBIENT SOUND === */
+    const soundUrls = [
+      "https://audio.jukehost.co.uk/fkTCpkGOaBUzu2cFveN2dG2Inq4cZWz0",
+      "https://audio.jukehost.co.uk/sGKaTmCvJCvxjFQtHipJFjndd2uHXOLk",
+      "https://audio.jukehost.co.uk/VjK5GjJS49pB9tlxyQduZiZacecTju4E"
+    ];
+
+    let audioEnabled = false;
+    let soundTimeoutId = null;
+
+    function playRandomSound() {
+      if (!audioEnabled || gameOver || soundUrls.length === 0) return;
+      const url = soundUrls[Math.floor(Math.random() * soundUrls.length)];
+      const audio = new Audio(url);
+      audio.volume = 0.7;
+      audio.play().catch(() => {});
+    }
+
+    function scheduleNextSound() {
+      if (!audioEnabled || gameOver) return;
+      const delay = 1000 + Math.random() * 5000; // 1–6s
+      soundTimeoutId = setTimeout(() => {
+        playRandomSound();
+        scheduleNextSound();
+      }, delay);
+    }
+
+    function startSoundLoopIfReady() {
+      if (!audioEnabled) return;
+      if (soundTimeoutId !== null) return;
+      scheduleNextSound();
+    }
+
+    function stopSoundLoop() {
+      if (soundTimeoutId !== null) {
+        clearTimeout(soundTimeoutId);
+        soundTimeoutId = null;
+      }
+    }
+
+    function enableAudioOnce() {
+      if (!audioEnabled) {
+        audioEnabled = true;
+        startSoundLoopIfReady();
+      }
+    }
+
+    document.addEventListener("click", enableAudioOnce);
+    document.addEventListener("keydown", enableAudioOnce);
+
+    /* === GAME LOGIC === */
+
+    function createObstacles() {
+      obstaclesContainer.innerHTML = "";
+      obstacles = [];
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const count = 5;
+
+      for (let i = 0; i < count; i++) {
+        const r = 40 + Math.random() * 50;
+        const x = 80 + Math.random() * (w - 160);
+        const y = 80 + Math.random() * (h - 160);
+
+        const o = { x, y, r };
+        obstacles.push(o);
+
+        const el = document.createElement("div");
+        el.className = "obstacle";
+        el.style.width = el.style.height = o.r * 2 + "px";
+        el.style.left = (o.x - o.r) + "px";
+        el.style.top = (o.y - o.r) + "px";
+        obstaclesContainer.appendChild(el);
+      }
+    }
+
+    function updateTreasureCounter() {
+      treasureCounterEl.textContent = `Treasure: ${tokensCollected}`;
+    }
+
+    function spawnToken() {
+      // Clear old token
+      tokens.forEach(t => t.el.remove());
+      tokens = [];
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const r = 18;
+      let attempts = 0;
+
+      while (attempts < 50) {
+        const x = 80 + Math.random() * (w - 160);
+        const y = 80 + Math.random() * (h - 160);
+        let invalid = false;
+
+        // Avoid obstacles
+        for (const o of obstacles) {
+          const dist = Math.hypot(x - o.x, y - o.y);
+          if (dist < o.r + r + 10) {
+            invalid = true;
+            break;
+          }
+        }
+
+        // Avoid hazards
+        if (!invalid) {
+          for (const hz of hazards) {
+            const dist = Math.hypot(x - hz.x, y - hz.y);
+            if (dist < hz.radius + r + 10) {
+              invalid = true;
+              break;
+            }
+          }
+        }
+
+        if (!invalid) {
+          const el = document.createElement("div");
+          el.className = "token";
+          el.style.left = x + "px";
+          el.style.top = y + "px";
+          tokensContainer.appendChild(el);
+
+          tokens.push({ x, y, r, el });
+          return;
+        }
+        attempts++;
+      }
+    }
+
+    function createTokens() {
+      spawnToken(); // single treasure
+    }
+
+    function spawnHazard() {
+      const x = catX;
+      const y = catY;
+      const radius = 10;
+      const maxRadius = 65;
+
+      const el = document.createElement("div");
+      el.className = "hazard";
+      el.style.width = radius * 2 + "px";
+      el.style.height = radius * 2 + "px";
+      el.style.left = (x - radius) + "px";
+      el.style.top = (y - radius) + "px";
+
+      hazardsContainer.appendChild(el);
+      const hazardObj = { x, y, radius, maxRadius, el };
+      hazards.push(hazardObj);
+
+      // If hazard spawns on treasure, remove treasure
+      if (tokens.length > 0) {
+        const token = tokens[0];
+        const dist = Math.hypot(token.x - x, token.y - y);
+        if (dist < radius + token.r + 10) {
+          token.el.remove();
+          tokens = [];
+        }
+      }
+    }
+
+    function spawnPowerup() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const radius = 16;
+
+      let x = catX + (Math.random() * 120 - 60);
+      let y = catY + (Math.random() * 120 - 60);
+
+      x = Math.max(50, Math.min(w - 50, x));
+      y = Math.max(50, Math.min(h - 50, y));
+
+      let invalid = false;
+      for (const o of obstacles) {
+        const dist = Math.hypot(x - o.x, y - o.y);
+        if (dist < o.r + radius + 10) {
+          invalid = true;
+          break;
+        }
+      }
+      if (!invalid) {
+        for (const hz of hazards) {
+          const dist = Math.hypot(x - hz.x, y - hz.y);
+          if (dist < hz.radius + radius + 10) {
+            invalid = true;
+            break;
+          }
+        }
+      }
+      if (invalid) return;
+
+      const el = document.createElement("div");
+      el.className = "powerup";
+      el.style.left = x + "px";
+      el.style.top = y + "px";
+
+      powerupsContainer.appendChild(el);
+      powerups.push({ x, y, radius, el });
+      lastPowerupTime = performance.now();
+    }
+
+    function setState(state) {
+      cat.classList.remove("cat--idle", "cat--walk", "cat--run", "cat--pounce");
+      cat.classList.add(`cat--${state}`);
+    }
+
+    function showVictory() {
+      if (victoryShown) return;
+      victoryShown = true;
+      victoryEl.classList.add("victory--visible");
+
+      // Simple, unconditional play if URL is set
+      if (VICTORY_SOUND_URL && typeof VICTORY_SOUND_URL === "string") {
+        const audio = new Audio(VICTORY_SOUND_URL);
+        audio.volume = 0.9;
+        audio.play().catch(() => {});
+      }
+    }
+
+    function triggerGameOver() {
+      gameOver = true;
+      setState("idle");
+      document.body.style.cursor = "default";
+      overlay.classList.remove("overlay--hidden");
+      player.style.opacity = 0;
+      stopSoundLoop();
+    }
+
+    document.addEventListener("mousemove", (e) => {
+      if (gameOver) return;
+      const proposedX = e.clientX;
+      const proposedY = e.clientY;
+
+      // Player can't pass obstacles
+      let blocked = false;
+      for (const o of obstacles) {
+        const dist = Math.hypot(proposedX - o.x, proposedY - o.y);
+        if (dist < o.r + PLAYER_RADIUS) {
+          blocked = true;
+          break;
+        }
+      }
+
+      if (!blocked) {
+        playerX = proposedX;
+        playerY = proposedY;
+      }
+
+      if (playerX == null || playerY == null) {
+        playerX = proposedX;
+        playerY = proposedY;
+      }
+
+      targetX = playerX;
+      targetY = playerY;
+
+      player.style.left = `${playerX}px`;
+      player.style.top = `${playerY}px`;
+
+      lastMouseMoveTime = performance.now();
+    });
+
+    function animate() {
+      if (gameOver) return;
+
+      const now = performance.now();
+
+      // Timer
+      const elapsedMs = now - gameStartTime;
+      const elapsedSeconds = elapsedMs / 1000;
+      timerEl.textContent = `Time: ${elapsedSeconds.toFixed(1)} s`;
+
+      // Hazards spawn
+      if (elapsedMs > HAZARD_START_DELAY && now - lastHazardTime > HAZARD_INTERVAL) {
+        spawnHazard();
+        lastHazardTime = now;
+
+        if (now - lastPowerupTime > POWERUP_MIN_INTERVAL && Math.random() < 0.25) {
+          spawnPowerup();
+        }
+      }
+
+      // Worm movement
+      const dxBase = targetX - catX;
+      const dyBase = targetY - catY;
+      let dx = dxBase;
+      let dy = dyBase;
+
+      const distance = Math.hypot(dxBase, dyBase);
+      const mouseStill = now - lastMouseMoveTime > 600;
+
+      let state;
+      let speedBase;
+
+      if (distance < 20 && mouseStill) {
+        state = "idle";
+        speedBase = 0.0003;
+      } else if (distance < 80 && !mouseStill) {
+        state = "pounce";
+        speedBase = 0.0009;
+      } else if (distance < 220) {
+        state = "walk";
+        speedBase = 0.0007;
+      } else {
+        state = "run";
+        speedBase = 0.0009;
+      }
+
+      // Slowly ramp up with each treasure
+      const speedBoost = tokensCollected * 0.00025;
+      const speed = speedBase + speedBoost;
+
+      setState(state);
+
+      const catchRadius = 40;
+      if (distance < catchRadius) {
+        triggerGameOver();
+        return;
+      }
+
+      // Worm avoids obstacles
+      obstacles.forEach(o => {
+        const ox = catX - o.x;
+        const oy = catY - o.y;
+        const dist = Math.hypot(ox, oy);
+        const avoidRadius = o.r + 60;
+        if (dist > 0 && dist < avoidRadius) {
+          const strength = (avoidRadius - dist) / avoidRadius;
+          dx += (ox / dist) * strength * 200;
+          dy += (oy / dist) * strength * 200;
+        }
+      });
+
+      catX += dx * speed;
+      catY += dy * speed;
+
+      const marginX = 120;
+      const marginY = 120;
+      catX = Math.max(marginX, Math.min(window.innerWidth - marginX, catX));
+      catY = Math.max(marginY, Math.min(window.innerHeight - marginY, catY));
+
+      const facingLeft = targetX < catX;
+      const scaleX = facingLeft ? -1 : 1;
+      const offsetX = 100;
+      const offsetY = 70;
+
+      cat.style.transform =
+        `translate(${catX - offsetX}px, ${catY - offsetY}px) scaleX(${scaleX})`;
+
+      // Treasure pickup
+      if (playerX != null && playerY != null && tokens.length > 0) {
+        const token = tokens[0];
+        const dist = Math.hypot(playerX - token.x, playerY - token.y);
+        if (dist < token.r + PLAYER_RADIUS * 0.4) {
+          token.el.remove();
+          tokens = [];
+          tokensCollected += 1;
+          updateTreasureCounter();
+          spawnToken();
+
+          // Check reward trigger
+          if (!victoryShown && tokensCollected >= VICTORY_TREASURE_THRESHOLD) {
+            showVictory();
+          }
+        }
+      }
+
+      // Powerup pickup
+      if (playerX != null && playerY != null) {
+        powerups = powerups.filter(p => {
+          const dist = Math.hypot(playerX - p.x, playerY - p.y);
+          if (dist < p.radius + PLAYER_RADIUS * 0.4) {
+            p.el.remove();
+            hasPowerup = true;
+            player.classList.add("player--powered");
+            return false;
+          }
+          return true;
+        });
+      }
+
+      // Hazards grow & collision
+      let hitHazard = false;
+      let hazardIndexToRemove = -1;
+
+      hazards.forEach((h, index) => {
+        if (h.radius < h.maxRadius) {
+          h.radius += 0.06;
+          const size = h.radius * 2;
+          h.el.style.width = size + "px";
+          h.el.style.height = size + "px";
+          h.el.style.left = (h.x - h.radius) + "px";
+          h.el.style.top = (h.y - h.radius) + "px";
+        }
+
+        if (playerX != null && playerY != null) {
+          const dist = Math.hypot(playerX - h.x, playerY - h.y);
+          if (dist < h.radius - 4) {
+            if (hasPowerup && hazardIndexToRemove === -1) {
+              hazardIndexToRemove = index;
+            } else {
+              hitHazard = true;
+            }
+          }
+        }
+      });
+
+      if (hazardIndexToRemove !== -1) {
+        const h = hazards[hazardIndexToRemove];
+        h.el.remove();
+        hazards.splice(hazardIndexToRemove, 1);
+        hasPowerup = false;
+        player.classList.remove("player--powered");
+      }
+
+      if (hitHazard) {
+        triggerGameOver();
+        return;
+      }
+
+      animationId = requestAnimationFrame(animate);
+    }
+
+    function startGame() {
+      if (animationId) cancelAnimationFrame(animationId);
+
+      createObstacles();
+      hazardsContainer.innerHTML = "";
+      hazards = [];
+      tokensContainer.innerHTML = "";
+      powerupsContainer.innerHTML = "";
+      tokens = [];
+      powerups = [];
+      tokensCollected = 0;
+      hasPowerup = false;
+      player.classList.remove("player--powered");
+      updateTreasureCounter();
+
+      createTokens();
+
+      gameOver = false;
+      victoryShown = false;
+      victoryEl.classList.remove("victory--visible");
+
+      document.body.style.cursor = "none";
+      overlay.classList.add("overlay--hidden");
+      player.style.opacity = 1;
+
+      catX = window.innerWidth / 2;
+      catY = window.innerHeight - 120;
+      playerX = catX;
+      playerY = catY;
+      targetX = playerX;
+      targetY = playerY;
+
+      setState("idle");
+
+      const offsetX = 100;
+      const offsetY = 70;
+      cat.style.transform =
+        `translate(${catX - offsetX}px, ${catY - offsetY}px) scaleX(1)`;
+
+      player.style.left = `${playerX}px`;
+      player.style.top = `${playerY}px`;
+
+      lastMouseMoveTime = performance.now();
+      gameStartTime = performance.now();
+      lastHazardTime = gameStartTime;
+      lastPowerupTime = gameStartTime;
+
+      timerEl.textContent = "Time: 0.0 s";
+
+      animationId = requestAnimationFrame(animate);
+      startSoundLoopIfReady();
+    }
+
+    resetBtn.addEventListener("click", startGame);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        startGame();
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      createObstacles();
+      catX = window.innerWidth / 2;
+      catY = window.innerHeight - 120;
+    });
+
+    // Start initial run
+    startGame();
+  </script>
+</body>
+</html>
